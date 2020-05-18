@@ -5,73 +5,104 @@
 #include <time.h>
 
 sem_t waitingArea; // Bekleme Alani Semaforu
-sem_t shaving; // Tras Semaforu
+sem_t shavingArea; // Tras Semaforu
 sem_t barberSleeping; // Berber Uyumsa Semaforu
+sem_t barberWaiting;
 
-int currentNumberCustomer = 0;
+pthread_mutex_t mutex;
+
+int currentNumberCustomers = 0;
 
 void *Barber();
 void *Customer();
 
+int currentCustomerNumber = -1;
+
 int main()
 {
     int isBarberSleeping = 1;
-    int i; //Ortak for döngüleri için.
+    int i; //Ortak for dÃ¶ngÃ¼leri iÃ§in.
     srand(time(NULL));
-    int thisDayNumberCustomers = 5 + rand()%35; // Gün boyunca 5 ile 35 arası müşteri gelmesi isteniyor.
+    int thisDayNumberCustomers = 5 + rand()%11; // GÃ¼n boyunca 5 ile 15 arasÃ½ mÃ¼Ã¾teri gelmesi isteniyor.
+    printf("MÃ¼ÅŸteri sayÄ±sÄ±: %d\n",thisDayNumberCustomers);
 
-    pthread_t customerThreads[thisDayNumberCustomers], barberThread; // Berber ve müşteri Thread'leri tanımlandı.
-    //Semaforlar tanımlanıyor.
-    sem_init(&waitingArea,1,5); // Bekleme alanının müşteri limiti 5 ayarlandı.
-    sem_init(&shaving,1,1); // Traş için müşteri limiti 1 ayarlandı.
+    pthread_t customerThreads[thisDayNumberCustomers], barberThread; // Berber ve mÃ¼Ã¾teri Thread'leri tanÃ½mlandÃ½.
+    //Semaforlar tanÃ½mlanÃ½yor.
+    sem_init(&waitingArea,1,5); // Bekleme alanÃ½nÃ½n mÃ¼Ã¾teri limiti 5 ayarlandÃ½.
+    sem_init(&shavingArea,1,1); // TraÃ¾ iÃ§in mÃ¼Ã¾teri limiti 1 ayarlandÃ½.
     sem_init(&barberSleeping,1,0); // Berber uyuma semaforu konuldu.
+    sem_init(&barberWaiting,1,0); // Berberin mÃ¼ÅŸteriyi bekleme semaforu konuldu.
 
+
+    //Thread'ler oluÃ¾turuluyor
+
+    pthread_mutex_init(&mutex,NULL);
 
     pthread_create(&barberThread,NULL,Barber,NULL);
 
-    //Thread'ler oluşturuluyor
     for(i=0; i< thisDayNumberCustomers;i++)
-        pthread_create(&customerThreads[i],NULL,Customer,NULL);
+        pthread_create(&customerThreads[i],NULL,Customer,(void *)i+1);
 
-    //Join işlemi çökme olmasın diye create'lerden ayrı yazılıyor.
+    //Join iÃ¾lemi Ã§Ã¶kme olmasÃ½n diye create'lerden ayrÃ½ yazÃ½lÃ½yor.
     pthread_join(barberThread,NULL);
 
     for(i=0; i< thisDayNumberCustomers;i++)
-        pthread_create(&customerThreads[i],NULL);
+        pthread_join(customerThreads[i],NULL);
 
 
     return 0;
 }
 
-void *Customer(){
-sleep(1);
+void *Customer(void * customerNumber){
+sleep(5 + rand()%25);
 
-printf("\n Müşteri berber dükkanının önüne geldi.\n");
+printf("\n %d.numarali MÃ¼ÅŸteri berber dÃ¼kkanÄ±nÄ±n Ã¶nÃ¼ne geldi.\n",(int)customerNumber);
 
-sem_wait(waitingArea);
 
-currentNumberCustomer++;
+sem_wait(&waitingArea);
 
-printf("Müşteri bekleme alanına geçti.");
+currentNumberCustomers++;
 
-if(currentNumberCustomer == 1)
-    sem_post(barberSleeping);
-sem_wait(shaving);
+printf("%d numaralÄ± MÃ¼ÅŸteri bekleme alanÄ±na geÃ§ti.\n",(int)customerNumber);
 
-printf("Müşteri traş olma alanına geçti.");
+if(currentNumberCustomers == 1)
+{
+    printf("%d numaralÄ± mÃ¼ÅŸteri berberi uyandirdi.\n",(int)customerNumber);
+    sem_post(&barberSleeping);
+}
+sem_wait(&shavingArea);
 
+sem_post(&waitingArea);
+
+currentCustomerNumber = (int)customerNumber;
+
+printf("%d numaralÄ± MÃ¼ÅŸteri traÅŸ olma alanÄ±na geÃ§ti.\n",(int)customerNumber);
+
+sem_post(&barberWaiting);
 }
 
 void *Barber(){
+while(1){
 
-if(currentNumberCustomer == 0)
-    sem_wait(barberSleeping);
+if(currentNumberCustomers <= 0){
+    printf("Barber Sleeping\n");
+    sem_wait(&barberSleeping);
+}
 
-sem_post(shaving);
-printf("Müşteri traş oldu.");
+sem_wait(&barberWaiting);
 
-sem_post(waitingArea);
+printf("\nAnlÄ±k mÃ¼ÅŸteri sayÄ±sÄ±: %d\n",currentNumberCustomers);
 
-currentNumberCustomer--;
+printf("%d.MÃ¼ÅŸteri TraÅŸ oluyor.\n",currentCustomerNumber);
+sleep(1);
+printf("%d.MÃ¼ÅŸteri traÅŸ oldu.\n",currentCustomerNumber);
 
+currentNumberCustomers--;
+
+printf("%d.MÃ¼ÅŸteri dÃ¼kkandan Ã§Ä±ktÄ±.\n",currentCustomerNumber);
+
+sem_post(&shavingArea);
+
+
+}
 }
